@@ -1,4 +1,4 @@
-version: "3"
+version: "3.8"
 services:
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest
@@ -7,43 +7,42 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - SERVERURL=${PERSONAL_URL}
-      - SERVERPORT=${PERSONAL_VPN_PORT}
-      - PEERS=${PERSONAL_PEERS}
-      - PEERDNS=${PERSONAL_DNS_IPV4}
-      - INTERNAL_SUBNET=${PERSONAL_SUBNET}
-      - ALLOWEDIPS=0.0.0.0/0
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - SERVERURL=${WIREGUARD_SERVERURL}
+      - SERVERPORT=${WIREGUARD_SERVERPORT}
+      - PEERS=${WIREGUARD_PEERS}
+      - PEERDNS=${WIREGUARD_PEERDNS}
+      - INTERNAL_SUBNET=${WIREGUARD_INTERNAL_SUBNET}
+      - ALLOWEDIPS=${WIREGUARD_ALLOWEDIPS}
       - PERSISTENTKEEPALIVE_PEERS=all
       - LOG_CONFS=true
     volumes:
-      - /deploy/personal/wireguard:/config
-      - /deploy/personal/modules:/lib/modules
+      - ${DEPLOY_PATH}/personal/wireguard:/config
+      - ${DEPLOY_PATH}/personal/modules:/lib/modules
     networks:
-      personal-network:
-        ipv4_address: ${PERSONAL_VPN_IPV4}
+      - personal-network
     ports:
-      - ${PERSONAL_VPN_PORT}:${PERSONAL_VPN_PORT}/udp
+      - "${WIREGUARD_SERVERPORT}:${WIREGUARD_SERVERPORT}/udp"
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
-      - net.ipv4.ip_forward=1  # Enable IP forwarding
+      - net.ipv4.ip_forward=1
       - net.ipv6.conf.all.forwarding=1
     restart: unless-stopped
+    depends_on:
+      - unbound
+
   unbound:
     container_name: personal-dns-container
     image: "mvance/unbound:latest"
     networks:
-      personal-network:
-        ipv4_address: ${PERSONAL_DNS_IPV4}
+      - personal-network
     volumes:
-      - /deploy/personal/unbound/a-records.conf:/opt/unbound/etc/unbound/a-records.conf
+      - ${DEPLOY_PATH}/personal/unbound/a-records.conf:/opt/unbound/etc/unbound/a-records.conf
     restart: unless-stopped
+
   nextcloud-aio-mastercontainer:
-    networks:
-      personal-network:
-        ipv4_address: ${PERSONAL_NEXTCLOUD_IPV4}
     image: nextcloud/all-in-one:latest
     init: true
     restart: always
@@ -52,51 +51,64 @@ services:
       - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - APACHE_PORT=11000
+      - APACHE_PORT=${NEXTCLOUD_APACHE_PORT}
       - APACHE_ADDITIONAL_NETWORK=deploy_personal-network
       - APACHE_IP_BINDING=0.0.0.0
     ports:
-      - "8080:8080"
-  caddy:
+      - "${NEXTCLOUD_PORT}:8080"
     networks:
-      - personal-network
-      - nextcloud-aio
+      personal-network:
+        ipv4_address: ${NEXTCLOUD_IPV4}
+    depends_on:
+      - caddy
+
+  caddy:
     build:
       context: ./personal/caddy
       dockerfile: Dockerfile
     restart: always
     container_name: caddy
     volumes:
-      - /deploy/personal/caddy:/etc/caddy
-      - /deploy/personal/caddy/certs:/certs
-      - /deploy/personal/caddy/config:/config
-      - /deploy/personal/caddy/data:/data
-      - /deploy/personal/caddy/sites:/srv
+      - ${DEPLOY_PATH}/personal/caddy:/etc/caddy
+      - ${DEPLOY_PATH}/personal/caddy/certs:/certs
+      - ${DEPLOY_PATH}/personal/caddy/config:/config
+      - ${DEPLOY_PATH}/personal/caddy/data:/data
+      - ${DEPLOY_PATH}/personal/caddy/sites:/srv
     ports:
       - "80:80"
       - "443:443"
+    networks:
+      - personal-network
+      - nextcloud-aio
+    depends_on:
+      - unbound
+
   homeassistant:
     container_name: homeassistant
     image: "ghcr.io/home-assistant/home-assistant:stable"
     volumes:
-      - /deploy/personal/homeassistant/config:/config
+      - ${DEPLOY_PATH}/personal/homeassistant/config:/config
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     privileged: true
     networks:
       - personal-network
+    depends_on:
+      - nextcloud-aio-mastercontainer
+
   redbot:
-    networks:
-      - personal-network
     container_name: redbot
     build:
       context: ./personal/redbot
       dockerfile: Dockerfile
       args:
-        BOT_NAME: ${BOT_NAME}
-  vtt:
+        BOT_NAME: ${REDBOT_NAME}
     networks:
       - personal-network
+    depends_on:
+      - nextcloud-aio-mastercontainer
+
+  vtt:
     container_name: vtt
     hostname: vtt
     build:
@@ -106,78 +118,161 @@ services:
         FOUNDRY_USERNAME: ${FOUNDRY_USERNAME}
         FOUNDRY_PASSWORD: ${FOUNDRY_PASSWORD}
     volumes:
-      - /deploy/personal/vtt12/data:/root/.local/share
-  invidious:
-    container_name: invidious
+      - ${DEPLOY_PATH}/personal/vtt12/data:/root/.local/share
     networks:
       - personal-network
-    image: quay.io/invidious/invidious:latest
-    # image: quay.io/invidious/invidious:latest-arm64 # ARM64/AArch64 devices
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      # Please read the following file for a comprehensive list of all available
-      # configuration options and their associated syntax:
-      # https://github.com/iv-org/invidious/blob/master/config/config.example.yml
-      INVIDIOUS_CONFIG: |
-        db:
-          dbname: invidious
-          user: kemal
-          password: kemal
-          host: invidious-db
-          port: 5432
-        check_tables: true
-        signature_server: inv_sig_helper:12999
-        visitor_data: "CgtqR0l6Q09JcGFNdyjWs9W-BjIKCgJVUxIEGgAgRA%3D%3D"
-        po_token: "MnRv67o1D8-OLW_T2qvsE966YflsKxe0-V8uelF4hJ5x7gGLLUa3Ls_2KB7Ss9LrmRmccjiTqrs64Ge_C3RzyQk5kWGeWMN_khUQGF-oGDPO3jxX79nc95jk_Q-57e1w9BHtgMbNzo_0VQvEiN542VqBkHu3Nw=="
-        # external_port:
-        # domain:
-        # https_only: false
-        # statistics_enabled: false
-        hmac_key: "ieshe8shep0Fohsho9aD"
-    healthcheck:
-      test: wget -nv --tries=1 --spider http://127.0.0.1:3000/api/v1/trending || exit 1
-      interval: 30s
-      timeout: 5s
-      retries: 2
-    logging:
-      options:
-        max-size: "1G"
-        max-file: "4"
-    depends_on:
-      - invidious-db
 
-  inv_sig_helper:
-    networks:
-      - personal-network
-    image: quay.io/invidious/inv-sig-helper:latest
-    init: true
-    command: ["--tcp", "0.0.0.0:12999"]
-    environment:
-      - RUST_LOG=info
-    restart: unless-stopped
-    cap_drop:
-      - ALL
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-
-  invidious-db:
-    networks:
-      - personal-network
-    image: docker.io/library/postgres:14
+  homeserver:
+    container_name: homeserver
+    image: girlbossceo/conduwuit:main
     restart: unless-stopped
     volumes:
-      - postgresdata:/var/lib/postgresql/data
-      - ./config/sql:/config/sql
-      - ./docker/init-invidious-db.sh:/docker-entrypoint-initdb.d/init-invidious-db.sh
+      - conduwuit_db:/var/lib/conduwuit
+    networks:
+      - personal-network
     environment:
-      POSTGRES_DB: invidious
-      POSTGRES_USER: kemal
-      POSTGRES_PASSWORD: kemal
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      - CONDUWUIT_SERVER_NAME=${MATRIX_SERVER_NAME}
+      - CONDUWUIT_DATABASE_PATH=/var/lib/conduwuit
+      - CONDUWUIT_PORT=6167
+      - CONDUWUIT_MAX_REQUEST_SIZE=20000000
+      - CONDUWUIT_ALLOW_REGISTRATION=${MATRIX_ALLOW_REGISTRATION}
+      - CONDUWUIT_REGISTRATION_TOKEN=${MATRIX_REGISTRATION_TOKEN}
+      - CONDUWUIT_ALLOW_FEDERATION='true'
+      - CONDUWUIT_ALLOW_CHECK_FOR_UPDATES='true'
+      - CONDUWUIT_TRUSTED_SERVERS='["${MATRIX_SERVER_NAME}", "matrix.org"]'
+      - CONDUWUIT_TURN_URIS='["turn:${MATRIX_SERVER_NAME}?transport=udp", "turn:${MATRIX_SERVER_NAME}?transport=tcp"]'
+      - CONDUWUIT_ADDRESS=0.0.0.0
+      - CONDUWUIT_URL_PREVIEW_DOMAIN_EXPLICIT_ALLOWLIST='["www.reddit.com", "www.youtube.com"]'
+      - CONDUWUIT_ALLOW_LEGACY_MEDIA='true'
+      - CONDUWUIT_NEW_USER_DISPLAYNAME_SUFFIX=''
+    depends_on:
+      - nextcloud-aio-mastercontainer
+
+  element:
+    container_name: element
+    image: vectorim/element-web:latest
+    restart: unless-stopped
+    volumes:
+      - ./personal/matrix/element-config.json:/app/config.json
+    environment:
+      - ELEMENT_WEB_PORT=3030
+    networks:
+      - personal-network
+    depends_on:
+      - nextcloud-aio-mastercontainer
+      - homeserver
+
+  turn:
+    container_name: coturn-server
+    image: docker.io/coturn/coturn
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./personal/matrix/coturn.conf:/etc/coturn/turnserver.conf
+
+  cinny:
+    container_name: cinny
+    image: cinny:latest
+    restart: unless-stopped
+    volumes:
+      - ./personal/matrix/elementcall/config.json:/app/element-call/dist/config.json
+    networks:
+      - personal-network
+    depends_on:
+      - nextcloud-aio-mastercontainer
+      - homeserver
+
+  mautrix-discord:
+    container_name: mautrix-discord
+    image: dock.mau.dev/mautrix/discord:4927a73ce7411f3970803d35c22f0c8c96dc2d7e-amd64
+    restart: unless-stopped
+    volumes:
+      - ./personal/matrix/discord/data:/data
+    networks:
+      - personal-network
+    depends_on:
+      - database
+      - homeserver
+
+  database:
+    image: 'postgres:latest'
+    container_name: 'database'
+    env_file:
+      - .env
+    volumes:
+      - ./db-data/:/var/lib/postgresql/data/
+    networks:
+      - personal-network
+    depends_on:
+      - homeserver
+      - nextcloud-aio-mastercontainer
+
+  mmr:
+    image: 'docker.io/turt2live/matrix-media-repo:v1.3.8'
+    container_name: 'mmr'
+    volumes:
+      - ./personal/matrix/mmr:/data
+    networks:
+      - personal-network
+    depends_on:
+      - nextcloud-aio-mastercontainer
+      - homeserver
+      - database
+
+  element-call:
+    image: 'ghcr.io/element-hq/element-call:sha-1702b15'
+    container_name: element-call
+    volumes:
+      - ./personal/matrix/elementcall/config.json:/app/config.json
+    networks:
+      - personal-network
+    depends_on:
+      - nextcloud-aio-mastercontainer
+      - homeserver
+      - database
+
+  livekit:
+    image: livekit/livekit-server
+    container_name: livekit
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./personal/matrix/elementcall/livekit.yaml:/etc/livekit.yaml
+    ports:
+      - "50100-50200:50100-50200/udp"
+    networks:
+      - personal-network
+    restart: unless-stopped
+
+  livekit-jwt:
+    container_name: livekit-jwt
+    image: ghcr.io/element-hq/lk-jwt-service:0.2.3
+    environment:
+      - LIVEKIT_SECRET=${LIVEKIT_SECRET}
+      - LIVEKIT_KEY=${LIVEKIT_KEY}
+      - LIVEKIT_URL=https://${LIVEKIT_URL}/livekit/sfu
+    networks:
+      - personal-network
+    restart: unless-stopped
+
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    restart: always
+    volumes:
+      - gitea-data:/data
+      - /etc/timezone:/etc/timezone:ro
+    ports:
+      - "${GITEA_PORT}:3000"
+      - "${GITEA_SSH_PORT}:22"
+    environment:
+      - USER_UID=${PUID}
+      - USER_GID=${PGID}
+      - GITEA__service__DISABLE_REGISTRATION=true
+    networks:
+      - personal-network
+    depends_on:
+      - caddy
+
 networks:
   personal-network:
     driver: bridge
@@ -186,13 +281,11 @@ networks:
       config:
         - subnet: ${PERSONAL_IPAM_SUBNET}/24
   nextcloud-aio:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: ${NEXTCLOUD_IPAM_SUBNET}/24
+    name: nextcloud-aio_default # Correctly reference the AIO network
+    external: true
+
 volumes:
-  mydata:
   nextcloud_aio_mastercontainer:
     name: nextcloud_aio_mastercontainer
-  postgresdata:
+  conduwuit_db:
+  gitea-data:
