@@ -1,0 +1,32 @@
+repo:
+  bindAddress: 'mmr'
+  port: 8000
+  logLevel: "debug"
+database:
+  postgres: "postgres://<USERNAME>:<PASSWORD>@database:5432/mmr2?sslmode=disable"
+homeservers:
+  - name: {MATRIX_DOMAIN}
+    csApi: "https://{MATRIX_DOMAIN}"
+accessTokens:
+  appservices:
+    - id: discord
+      asToken: <APP_TOKEN>
+      senderUserId: "^@discordbot:{MATRIX_DOMAIN}$"
+      userNamespaces:
+        - regex: "^@discord_.*:{MATRIX_DOMAIN}$"
+admins:
+  - "@gigiaj:{MATRIX_DOMAIN}"
+datastores:
+  - type: s3
+    id: "datastore"
+    forKinds: ["all"]
+    opts:
+      tempPath: "/tmp/mediarepo_s3_upload"
+      endpoint: s3.endpoint.com
+      accessKeyId: "{ACCESS_KEY_ID}"
+      accessSecret: "{ACCESS_SECRET}"
+      ssl: true
+      bucketName: "bucket-name"
+      region: "us-east-1"
+rateLimit:
+  enabled: false
