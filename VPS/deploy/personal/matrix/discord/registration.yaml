@@ -1,0 +1,14 @@
+id: discord
+url: http://mautrix-discord:29334
+as_token: {APP_SERVICE_TOKEN}
+hs_token: {HOME_SERVER_TOKEN}
+sender_localpart: {LOCALPART}
+rate_limited: false
+namespaces:
+    users:
+        - regex: ^@discordbot:{MATRIX_DOMAIN}$
+          exclusive: true
+        - regex: ^@discord_.*:{MATRIX_DOMAIN}$
+          exclusive: true
+de.sorunome.msc2409.push_ephemeral: true
+push_ephemeral: true
