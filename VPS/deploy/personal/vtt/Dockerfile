@@ -1,4 +1,4 @@
-FROM node:18
+FROM node:20
 
 ARG FOUNDRY_USERNAME
 ARG FOUNDRY_PASSWORD 
@@ -11,11 +11,11 @@ COPY . .
 
 RUN bash ./foundrydownloader.sh
 
-RUN ls -a
+RUN ls -alh
 
 RUN unzip foundryvtt.zip
 
-CMD node main.js
+CMD node resources/app/main.js
 
 EXPOSE 30000
 
