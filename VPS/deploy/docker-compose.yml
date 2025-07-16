@@ -253,25 +253,37 @@ services:
     networks:
       - personal-network
     restart: unless-stopped
-
   gitea:
-    image: gitea/gitea:latest
+    image: gitea/gitea:latest-rootless
     container_name: gitea
-    restart: always
-    volumes:
-      - gitea-data:/data
-      - /etc/timezone:/etc/timezone:ro
-    ports:
-      - "${GITEA_PORT}:3000"
-      - "${GITEA_SSH_PORT}:22"
-    environment:
-      - USER_UID=${PUID}
-      - USER_GID=${PGID}
-      - GITEA__service__DISABLE_REGISTRATION=true
     networks:
       - personal-network
+    restart: always
+    volumes:
+     - ./gitea-new:/var/lib/gitea
+     - ./gitea-config:/etc/gitea
+     - /etc/timezone:/etc/timezone:ro
+     - /etc/localtime:/etc/localtime:ro
+    environment:
+      - GITEA__service__DISABLE_REGISTRATION=false
+      - GITEA__server__START_SSH_SERVER=true
+      - GITEA__server__SSH_PORT=22
+      - GITEA__server__SSH_LISTEN_PORT=2222
+      - GITEA__server__SSH_DOMAIN=gitea.${PRIMARY_DOMAIN}
     depends_on:
       - caddy
+  cloudflared:
+      image: cloudflare/cloudflared:latest
+      container_name: cloudflared
+      networks:
+        - personal-network
+      restart: always
+      volumes:
+        - /etc/cloudflared:/etc/cloudflared:ro
+        - /root/.cloudflared:/root/.cloudflared
+      command: tunnel run filename.json
+      environment:
+        - TUNNEL_TOKEN=tokenhere=
 
 networks:
   personal-network:
@@ -281,7 +293,7 @@ networks:
       config:
         - subnet: ${PERSONAL_IPAM_SUBNET}/24
   nextcloud-aio:
-    name: nextcloud-aio_default # Correctly reference the AIO network
+    name: nextcloud-aio_default
     external: true
 
 volumes:
