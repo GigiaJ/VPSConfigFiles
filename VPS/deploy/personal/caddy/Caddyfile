@@ -176,3 +176,8 @@ gitea.{$PRIMARY_DOMAIN} {
     import tls_cloudflare
     reverse_proxy gitea:3000
 }
+
+productivity.{$PRIMARY_DOMAIN} {
+    import tls_cloudflare
+    reverse_proxy productivity:80
+}
