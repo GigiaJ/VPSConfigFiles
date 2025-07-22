@@ -284,6 +284,20 @@ services:
       command: tunnel run filename.json
       environment:
         - TUNNEL_TOKEN=tokenhere=
+  super-productivity:
+    image: johannesjo/super-productivity:latest
+    container_name: productivity
+    networks:
+      - personal-network
+    restart: always
+    environment:
+      WEBDAV_BASE_URL: ${WEBDAV_BASE_URL:-http://nextcloud.example.com/remote.php/webdav/USERNAME/}
+      WEBDAV_USERNAME: ${WEBDAV_USERNAME:-admin}
+      WEBDAV_SYNC_FOLDER_PATH: ${WEBDAV_SYNC_FOLDER_PATH:-/}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-15}
+      IS_COMPRESSION_ENABLED: ${IS_COMPRESSION_ENABLED:-true}
+      IS_ENCRYPTION_ENABLED: ${IS_ENCRYPTION_ENABLED:-false}
+
 
 networks:
   personal-network:
